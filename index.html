@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DOCX Render - 文档预览与评论</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      height: 100%;
+    }
+
+    body {
+      font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+    }
+
+    .app {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    /* 顶部工具栏 */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+      border-bottom: 1px solid #475569;
+    }
+
+    .toolbar__brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .toolbar__logo {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 700;
+      font-size: 18px;
+    }
+
+    .toolbar__title {
+      font-size: 18px;
+      font-weight: 600;
+      color: white;
+    }
+
+    .toolbar__subtitle {
+      font-size: 12px;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+
+    .toolbar__actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+
+    .btn--primary {
+      background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+      color: white;
+    }
+
+    .btn--primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+    }
+
+    .btn svg {
+      width: 18px;
+      height: 18px;
+    }
+
+    /* 主内容区 */
+    .main {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    #viewer {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* 加载状态 */
+    .loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #64748b;
+      gap: 16px;
+    }
+
+    .loading__spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #334155;
+      border-top-color: #f59e0b;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* 文件输入 */
+    .file-input {
+      display: none;
+    }
+
+    /* 底部状态栏 */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 24px;
+      background: #1e293b;
+      border-top: 1px solid #334155;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .status-bar__item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-bar__dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="toolbar">
+      <div class="toolbar__brand">
+        <div class="toolbar__logo">D</div>
+        <div>
+          <h1 class="toolbar__title">DOCX Render</h1>
+          <p class="toolbar__subtitle">自研渲染引擎 · 支持评论显示与编辑</p>
+        </div>
+      </div>
+      <div class="toolbar__actions">
+        <input type="file" id="file-input" class="file-input" accept=".docx">
+        <button class="btn btn--primary" onclick="document.getElementById('file-input').click()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17,8 12,3 7,8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          打开其他文件
+        </button>
+      </div>
+    </header>
+
+    <main class="main">
+      <div id="viewer">
+        <div class="loading" id="loading">
+          <div class="loading__spinner"></div>
+          <span>正在加载文档...</span>
+        </div>
+      </div>
+    </main>
+
+    <footer class="status-bar">
+      <div class="status-bar__item">
+        <span class="status-bar__dot"></span>
+        <span id="status-text">就绪</span>
+      </div>
+      <div class="status-bar__item">
+        <span id="comment-count">评论: 0</span>
+      </div>
+    </footer>
+  </div>
+
+  <script type="module">
+    import { DocxRender } from './src/index.ts'
+
+    let docxRender = null
+
+    const viewer = document.getElementById('viewer')
+    const loading = document.getElementById('loading')
+    const fileInput = document.getElementById('file-input')
+    const statusText = document.getElementById('status-text')
+    const commentCount = document.getElementById('comment-count')
+
+    // 更新状态
+    function updateStatus(text) {
+      statusText.textContent = text
+    }
+
+    // 更新评论计数
+    function updateCommentCount(count) {
+      commentCount.textContent = `评论: ${count}`
+    }
+
+    // 加载文件
+    async function loadFile(file) {
+      loading.style.display = 'flex'
+      updateStatus('正在加载...')
+
+      try {
+        // 清空之前的内容
+        viewer.innerHTML = ''
+        viewer.appendChild(loading)
+
+        // 创建渲染器
+        docxRender = new DocxRender({
+          container: viewer,
+          renderComments: true,
+          enableCommentEdit: true,
+          showCommentLines: true,
+          onCommentClick: (comment) => {
+            console.log('点击评论:', comment)
+          },
+          onCommentChange: (comment, action) => {
+            console.log('评论变更:', action, comment)
+            updateCommentCount(docxRender.getComments().length)
+          }
+        })
+
+        await docxRender.render(file)
+
+        const comments = docxRender.getComments()
+        updateCommentCount(comments.length)
+        updateStatus(`已加载: ${file.name || 'contract.docx'}`)
+        
+        console.log('文档加载完成，评论数:', comments.length)
+      } catch (error) {
+        console.error('加载失败:', error)
+        updateStatus('加载失败')
+        viewer.innerHTML = `
+          <div class="loading">
+            <span style="color: #ef4444;">加载失败: ${error.message}</span>
+          </div>
+        `
+      }
+    }
+
+    // 文件选择
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0]
+      if (file) {
+        loadFile(file)
+      }
+    })
+
+    // 自动加载 contract.docx
+    async function loadDefaultFile() {
+      try {
+        const response = await fetch('./contract.docx')
+        if (response.ok) {
+          const blob = await response.blob()
+          const file = new File([blob], 'contract.docx', {
+            type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+          })
+          await loadFile(file)
+        } else {
+          loading.innerHTML = `
+            <span>请点击上方按钮选择 .docx 文件</span>
+          `
+          updateStatus('等待文件')
+        }
+      } catch (error) {
+        loading.innerHTML = `
+          <span>请点击上方按钮选择 .docx 文件</span>
+        `
+        updateStatus('等待文件')
+      }
+    }
+
+    loadDefaultFile()
+  </script>
+</body>
+</html>
